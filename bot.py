@@ -421,9 +421,41 @@ async def demander_signal(page: Page, asset: str, strategy: str) -> bool:
     """
     log.info(f"📤 Demande de signal — {asset} / {strategy}")
     try:
-        # Ouvrir la modal en cliquant sur "Request signal"
-        btn_req = page.locator("button", has_text=re.compile(r"request signal", re.I)).first
-        await btn_req.click(timeout=10_000)
+        # Chercher le bouton "Request signal" avec plusieurs sélecteurs alternatifs
+        selecteurs = [
+            page.locator("button", has_text=re.compile(r"request\s*signal", re.I)),
+            page.locator("button", has_text=re.compile(r"request", re.I)),
+            page.locator("[class*='request']"),
+            page.get_by_role("button", name=re.compile(r"request", re.I)),
+            page.locator("button >> nth=0"),  # Premier bouton visible en dernier recours
+        ]
+
+        clique = False
+        for selecteur in selecteurs:
+            try:
+                count = await selecteur.count()
+                if count > 0 and await selecteur.first.is_visible(timeout=2000):
+                    texte_btn = await selecteur.first.inner_text()
+                    log.info(f"   🔎 Bouton trouvé : '{texte_btn.strip()}'")
+                    await selecteur.first.click(timeout=10_000)
+                    clique = True
+                    break
+            except Exception:
+                continue
+
+        if not clique:
+            # Logger tous les boutons visibles pour debug
+            tous_boutons = page.locator("button")
+            nb = await tous_boutons.count()
+            log.warning(f"   ⚠️ Bouton 'Request signal' introuvable. {nb} bouton(s) sur la page :")
+            for idx in range(min(nb, 10)):
+                try:
+                    txt = await tous_boutons.nth(idx).inner_text()
+                    log.warning(f"      [{idx}] '{txt.strip()}'")
+                except Exception:
+                    pass
+            raise Exception("Bouton 'Request signal' introuvable après tous les essais")
+
         await page.wait_for_timeout(1500)
 
         # Sélectionner la carte asset (texte exact)
