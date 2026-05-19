@@ -301,29 +301,42 @@ async def page_en_erreur(page: Page) -> bool:
 
 async def est_connecte(page: Page) -> bool:
     """
-    Vérifie si la session est active en cherchant le bouton 'Request signal'.
-    Si le bouton 'Sign in' est visible à la place, la session est expirée.
+    Vérifie si la session est active.
+    Logique : si le bouton "Sign in" est visible en haut à droite → pas connecté.
+    S'il est absent → connecté.
     """
-    # S'assurer qu'on est sur la bonne page avant de chercher le bouton
-    if "/live-signals" not in page.url:
-        try:
+    try:
+        # S'assurer d'être sur live-signals
+        if "/live-signals" not in page.url:
             await page.goto(
                 "https://prysmintelligence.app/live-signals",
                 wait_until="domcontentloaded",
                 timeout=30_000,
             )
             await page.wait_for_timeout(2000)
-        except Exception:
-            pass
 
-    try:
-        sign_in = page.get_by_role("button", name=re.compile(r"^sign\s*in$", re.I))
-        if await sign_in.count() > 0 and await sign_in.first.is_visible(timeout=2500):
+        # Si on est redirigé vers auth, clairement pas connecté
+        if "/auth" in page.url or "/login" in page.url:
             return False
-        # Vérifier la présence du bouton principal de l'app
-        btn = page.locator("button", has_text=re.compile(r"request signal", re.I))
-        return await btn.count() > 0
-    except Exception:
+
+        # Chercher le bouton "Sign in" en haut à droite (header)
+        # S'il est visible → pas connecté
+        sign_in = page.locator("button, a", has_text=re.compile(r"^sign\s*in$", re.I))
+        count = await sign_in.count()
+        if count > 0:
+            for idx in range(count):
+                try:
+                    if await sign_in.nth(idx).is_visible(timeout=1500):
+                        log.info("🔒 Bouton 'Sign in' détecté — session expirée")
+                        return False
+                except Exception:
+                    pass
+
+        # Bouton "Sign in" absent → on est connecté
+        return True
+
+    except Exception as e:
+        log.error(f"❌ Erreur dans est_connecte : {e}")
         return False
 
 
@@ -362,7 +375,7 @@ async def se_connecter(page: Page) -> bool:
         # Attendre le chargement du tableau de bord
         await page.wait_for_timeout(4000)
 
-        # Naviguer vers Live Signals où se trouve le bouton "Request signal"
+        # Naviguer vers live-signals
         await page.goto(
             "https://prysmintelligence.app/live-signals",
             wait_until="domcontentloaded",
@@ -370,12 +383,24 @@ async def se_connecter(page: Page) -> bool:
         )
         await page.wait_for_timeout(2000)
 
-        if await est_connecte(page):
-            log.info("✅ Connexion réussie")
-            return True
+        # Vérifier qu'on n'est pas redirigé vers auth
+        if "/auth" in page.url or "/login" in page.url:
+            log.error(f"❌ Connexion échouée — redirigé vers {page.url}")
+            return False
 
-        log.error("❌ Connexion échouée : bouton 'Request signal' introuvable après login")
-        return False
+        # Vérifier que le bouton Sign in est absent (= on est connecté)
+        sign_in = page.locator("button, a", has_text=re.compile(r"^sign\s*in$", re.I))
+        count = await sign_in.count()
+        for idx in range(count):
+            try:
+                if await sign_in.nth(idx).is_visible(timeout=1500):
+                    log.error("❌ Connexion échouée — bouton Sign in encore visible")
+                    return False
+            except Exception:
+                pass
+
+        log.info("✅ Connexion réussie")
+        return True
 
     except Exception as e:
         log.error(f"❌ Exception lors de la connexion : {e}")
