@@ -383,6 +383,13 @@ async def se_connecter(page: Page) -> bool:
         )
         await page.wait_for_timeout(2000)
 
+        # Attendre que le contenu React soit rendu
+        try:
+            await page.wait_for_selector("text=Signal stream", timeout=15_000)
+        except PWTimeout:
+            log.warning("⚠️ Timeout attente 'Signal stream' — on continue quand même")
+        await page.wait_for_timeout(2000)
+
         # Vérifier qu'on n'est pas redirigé vers auth
         if "/auth" in page.url or "/login" in page.url:
             log.error(f"❌ Connexion échouée — redirigé vers {page.url}")
@@ -421,6 +428,19 @@ async def demander_signal(page: Page, asset: str, strategy: str) -> bool:
     """
     log.info(f"📤 Demande de signal — {asset} / {strategy}")
     try:
+        # Attendre que la page React ait fini de rendre ses composants
+        try:
+            await page.wait_for_selector(
+                "text=Signal stream, text=Request signal, text=Live Signals",
+                timeout=15_000,
+            )
+            log.info("   ✔ Page chargée")
+        except PWTimeout:
+            log.warning("   ⚠️ Timeout attente chargement page — on tente quand même")
+
+        # Attendre un peu supplémentaire pour le rendu JS
+        await page.wait_for_timeout(3000)
+
         # Chercher le bouton "Request signal" avec plusieurs sélecteurs alternatifs
         selecteurs = [
             page.locator("button", has_text=re.compile(r"request\s*signal", re.I)),
@@ -454,6 +474,16 @@ async def demander_signal(page: Page, asset: str, strategy: str) -> bool:
                     log.warning(f"      [{idx}] '{txt.strip()}'")
                 except Exception:
                     pass
+
+            # Logger l'URL et le contenu de la page pour diagnostic React
+            url_actuelle = page.url
+            try:
+                contenu = await page.inner_text("body")
+                log.warning(f"   📄 URL actuelle : {url_actuelle}")
+                log.warning(f"   📄 Contenu page (500 chars) : {contenu[:500]}")
+            except Exception:
+                pass
+
             raise Exception("Bouton 'Request signal' introuvable après tous les essais")
 
         await page.wait_for_timeout(1500)
@@ -599,6 +629,14 @@ async def main():
             timeout=30_000,
         )
         await page.wait_for_timeout(2000)
+
+        # Attendre que le contenu React soit rendu
+        try:
+            await page.wait_for_selector("text=Signal stream", timeout=15_000)
+        except PWTimeout:
+            log.warning("⚠️ Timeout attente 'Signal stream' — on continue quand même")
+        await page.wait_for_timeout(2000)
+
         log.info("📍 Navigué vers Live Signals")
 
         # Boucle principale
