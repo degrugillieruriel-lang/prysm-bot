@@ -585,8 +585,6 @@ async def scanner_signal_recent(page: Page) -> dict | None:
                 )
                 return signal
 
-        log.info(f"   Aucun signal récent. Prochain scan dans {SCAN_INTERVAL}s "
-                 f"({elapsed + SCAN_INTERVAL}/{MAX_SCAN_TIME}s écoulés)")
         await asyncio.sleep(SCAN_INTERVAL)
         elapsed += SCAN_INTERVAL
 
