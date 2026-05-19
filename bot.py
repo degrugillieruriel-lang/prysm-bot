@@ -23,7 +23,9 @@ EMAIL          = os.environ.get("EMAIL",          "urieldegrugillier@gmail.com")
 PASSWORD       = os.environ.get("PASSWORD",       "Deg2005U!")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8225809582:AAFwsUQRVW-gx4y9QuAETowHqye2-3e76kI")
 TELEGRAM_CHAT  = os.environ.get("TELEGRAM_CHAT",  "-1003358493754")
-SITE_URL       = "https://prysmintelligence.app/"
+SITE_URL          = "https://prysmintelligence.app/"
+# URL réelle de la page Live Signals — découverte dynamiquement au premier login
+LIVE_SIGNALS_URL  = "https://prysmintelligence.app/"
 
 WAIT_AFTER_SIGNAL = 15 * 60  # Secondes d'attente après un signal envoyé
 SCAN_INTERVAL     = 15       # Secondes entre chaque scan de page
@@ -296,6 +298,34 @@ async def page_en_erreur(page: Page) -> bool:
 
 
 # ============================================================
+# DÉCOUVERTE DE L'URL LIVE SIGNALS
+# ============================================================
+
+async def trouver_url_live_signals(page: Page) -> str:
+    """
+    Cherche le lien 'Live Signals' dans le menu de navigation, clique dessus
+    et retourne l'URL réelle de la page pour les navigations suivantes.
+    En cas d'échec, retourne l'URL courante comme fallback.
+    """
+    try:
+        # Chercher le lien Live Signals dans la sidebar ou la navbar
+        lien = page.locator("a, button", has_text=re.compile(r"live\s*signals", re.I)).first
+        if await lien.count() > 0 and await lien.is_visible(timeout=5000):
+            await lien.click()
+            await page.wait_for_timeout(2000)
+            url = page.url
+            log.info(f"📍 URL Live Signals découverte : {url}")
+            return url
+    except Exception as e:
+        log.warning(f"⚠️ Impossible de trouver le lien Live Signals : {e}")
+
+    # Fallback : retourner l'URL actuelle
+    url_fallback = page.url
+    log.warning(f"⚠️ Fallback URL Live Signals : {url_fallback}")
+    return url_fallback
+
+
+# ============================================================
 # GESTION DE LA SESSION (CONNEXION / RECONNEXION)
 # ============================================================
 
@@ -306,10 +336,10 @@ async def est_connecte(page: Page) -> bool:
     S'il est absent → connecté.
     """
     try:
-        # S'assurer d'être sur live-signals
-        if "/live-signals" not in page.url:
+        # S'assurer d'être sur Live Signals (comparaison avec l'URL découverte dynamiquement)
+        if LIVE_SIGNALS_URL not in page.url:
             await page.goto(
-                "https://prysmintelligence.app/live-signals",
+                LIVE_SIGNALS_URL,
                 wait_until="domcontentloaded",
                 timeout=30_000,
             )
@@ -375,13 +405,9 @@ async def se_connecter(page: Page) -> bool:
         # Attendre le chargement du tableau de bord
         await page.wait_for_timeout(4000)
 
-        # Naviguer vers live-signals
-        await page.goto(
-            "https://prysmintelligence.app/live-signals",
-            wait_until="domcontentloaded",
-            timeout=30_000,
-        )
-        await page.wait_for_timeout(2000)
+        # Découvrir et naviguer vers la page Live Signals via le menu de navigation
+        global LIVE_SIGNALS_URL
+        LIVE_SIGNALS_URL = await trouver_url_live_signals(page)
 
         # Attendre que le contenu React soit rendu
         try:
@@ -622,9 +648,9 @@ async def main():
             await browser.close()
             return
 
-        # S'assurer d'être sur Live Signals au démarrage
+        # S'assurer d'être sur Live Signals au démarrage (URL découverte lors du login)
         await page.goto(
-            "https://prysmintelligence.app/live-signals",
+            LIVE_SIGNALS_URL,
             wait_until="domcontentloaded",
             timeout=30_000,
         )
