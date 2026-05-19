@@ -304,6 +304,18 @@ async def est_connecte(page: Page) -> bool:
     Vérifie si la session est active en cherchant le bouton 'Request signal'.
     Si le bouton 'Sign in' est visible à la place, la session est expirée.
     """
+    # S'assurer qu'on est sur la bonne page avant de chercher le bouton
+    if "/live-signals" not in page.url:
+        try:
+            await page.goto(
+                "https://prysmintelligence.app/live-signals",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+            await page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
     try:
         sign_in = page.get_by_role("button", name=re.compile(r"^sign\s*in$", re.I))
         if await sign_in.count() > 0 and await sign_in.first.is_visible(timeout=2500):
@@ -349,6 +361,14 @@ async def se_connecter(page: Page) -> bool:
 
         # Attendre le chargement du tableau de bord
         await page.wait_for_timeout(4000)
+
+        # Naviguer vers Live Signals où se trouve le bouton "Request signal"
+        await page.goto(
+            "https://prysmintelligence.app/live-signals",
+            wait_until="domcontentloaded",
+            timeout=30_000,
+        )
+        await page.wait_for_timeout(2000)
 
         if await est_connecte(page):
             log.info("✅ Connexion réussie")
@@ -514,6 +534,15 @@ async def main():
             log.critical("🛑 Impossible de se connecter au site. Arrêt du bot.")
             await browser.close()
             return
+
+        # S'assurer d'être sur Live Signals au démarrage
+        await page.goto(
+            "https://prysmintelligence.app/live-signals",
+            wait_until="domcontentloaded",
+            timeout=30_000,
+        )
+        await page.wait_for_timeout(2000)
+        log.info("📍 Navigué vers Live Signals")
 
         # Boucle principale
         while True:
